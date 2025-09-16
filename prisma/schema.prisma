@@ -8,18 +8,236 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============= CORE USER MODELS =============
 model User {
-  id            String    @id @default(cuid())
-  email         String?   @unique
-  name          String?
-  image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  emailVerified DateTime?
-  accounts      Account[]
-  sessions      Session[]
+  id             String           @id @default(cuid())
+  email          String?          @unique
+  name           String?
+  image          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  emailVerified  DateTime?
+  
+  // Relations
+  accounts       Account[]
+  sessions       Session[]
+  preferences    UserPreference?
+  profiles       UserProfile?
+  gameSessions   GameSession[]
+  achievements   UserAchievement[]
+  friends        Friendship[]     @relation("UserFriends")
+  friendOf       Friendship[]     @relation("FriendOfUser")
+  dailySummaries DailyGameSummary[]
+
+  @@index([email])
 }
 
+model UserPreference {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  timezone   String   @default("UTC")
+  theme      Theme    @default(SYSTEM)
+  language   String   @default("en")
+  isPublic   Boolean  @default(true)
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  bio         String?
+  location    String?
+  website     String?
+  gamerTag    String?
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Friendship {
+  id         String           @id @default(cuid())
+  userId     String
+  friendId   String
+  status     FriendshipStatus @default(PENDING)
+  createdAt  DateTime         @default(now())
+
+  user       User     @relation("UserFriends", fields: [userId], references: [id], onDelete: Cascade)
+  friend     User     @relation("FriendOfUser", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, friendId])
+  @@index([userId, status])
+}
+
+// ============= GAME MODELS =============
+model Game {
+  id           String         @id @default(cuid())
+  title        String
+  description  String?
+  developer    String?
+  publisher    String?
+  releaseDate  DateTime?
+  coverImage   String?
+  isActive     Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+
+  // Relations
+  sessions     GameSession[]
+  achievements Achievement[]
+  genres       GameGenre[]
+  platforms    GamePlatform[]
+  dailySummaries DailyGameSummary[]
+
+  @@index([title])
+  @@index([isActive])
+}
+
+// Junction table for genres - enables proper querying
+model GameGenre {
+  id      String @id @default(cuid())
+  gameId  String
+  genreId String
+
+  game    Game  @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  genre   Genre @relation(fields: [genreId], references: [id])
+
+  @@unique([gameId, genreId])
+  @@index([genreId]) // Find all games of a specific genre
+}
+
+model Genre {
+  id    String @id @default(cuid())
+  name  String @unique
+  slug  String @unique
+
+  games GameGenre[]
+
+  @@index([name])
+}
+
+// Junction table for platforms
+model GamePlatform {
+  id         String @id @default(cuid())
+  gameId     String
+  platformId String
+
+  game     Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  platform Platform @relation(fields: [platformId], references: [id])
+
+  @@unique([gameId, platformId])
+  @@index([platformId])
+}
+
+model Platform {
+  id    String @id @default(cuid())
+  name  String @unique
+  slug  String @unique
+
+  games GamePlatform[]
+
+  @@index([name])
+}
+
+// ============= SESSION TRACKING =============
+model GameSession {
+  id        String    @id @default(cuid())
+  userId    String
+  gameId    String
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  notes     String?
+  mood      Mood?
+  
+  // Computed field - no duration stored, calculated at query time
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game      Game      @relation(fields: [gameId], references: [id], onDelete: Restrict)
+
+  // Critical indexes for performance
+  @@index([userId, startedAt(sort: Desc)]) // User's session timeline
+  @@index([gameId, startedAt(sort: Desc)]) // Game popularity over time
+  @@index([startedAt]) // Global recent sessions
+}
+
+// Pre-aggregated daily stats for performance
+model DailyGameSummary {
+  id           String   @id @default(cuid())
+  userId       String
+  gameId       String
+  date         DateTime @db.Date // Store only date, not time
+  totalMinutes Int      @default(0)
+  sessionCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game         Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, gameId, date])
+  @@index([userId, date(sort: Desc)]) // User's daily activity
+  @@index([gameId, date(sort: Desc)]) // Game's daily activity
+  @@index([date(sort: Desc)]) // Global daily leaderboards
+}
+
+// ============= ACHIEVEMENT SYSTEM =============
+model Achievement {
+  id          String   @id @default(cuid())
+  gameId      String
+  title       String
+  description String?
+  points      Int      @default(0)
+  iconUrl     String?
+  rarity      AchievementRarity @default(COMMON)
+
+  game        Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  users       UserAchievement[]
+
+  @@index([gameId])
+  @@index([rarity])
+}
+
+model UserAchievement {
+  id             String   @id @default(cuid())
+  userId         String
+  achievementId  String
+  unlockedAt     DateTime @default(now())
+
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement    Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@index([userId, unlockedAt(sort: Desc)])
+}
+
+// ============= ENUMS =============
+enum Theme {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+}
+
+enum Mood {
+  HAPPY
+  NEUTRAL
+  FRUSTRATED
+  EXCITED
+  FOCUSED
+  TIRED
+}
+
+enum AchievementRarity {
+  COMMON
+  UNCOMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
+
+// ============= NEXTAUTH MODELS =============
 model Account {
   id                String  @id @default(cuid())
   userId            String
@@ -33,9 +251,11 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
+  
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 model Session {
@@ -43,7 +263,10 @@ model Session {
   sessionToken String   @unique
   userId       String
   expires      DateTime
+  
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model VerificationToken {
