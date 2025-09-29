@@ -26,7 +26,7 @@ export default async function HomePage() {
               Get Started
             </Link>
             <Link 
-              href="/auth/signin"
+              href="/test-auth"
               className="border border-slate-300 hover:bg-slate-800 px-6 py-3 rounded-lg font-semibold transition-colors"
             >
               Sign In
