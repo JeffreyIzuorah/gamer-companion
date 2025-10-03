@@ -1,5 +1,7 @@
 import { auth, signOut } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { StartSessionForm } from "@/components/StartSessionForm";
+import { SessionsList } from "@/components/SessionsList";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -60,20 +62,15 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {/* Start Session Button */}
         <div className="bg-white p-6 rounded-lg shadow-sm mb-8">
           <h3 className="text-lg font-semibold mb-4">Start New Session</h3>
-          <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors">
-            Start Gaming Session
-          </button>
+          <StartSessionForm />
         </div>
 
         {/* Recent Sessions */}
         <div className="bg-white p-6 rounded-lg shadow-sm">
           <h3 className="text-lg font-semibold mb-4">Recent Sessions</h3>
-          <div className="text-center text-gray-500 py-8">
-            <p>No gaming sessions yet. Start your first session above!</p>
-          </div>
+          <SessionsList />
         </div>
       </div>
     </div>
